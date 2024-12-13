@@ -1,9 +1,11 @@
-﻿# Adapted from Chris Titus's script: https://github.com/ChrisTitusTech/win10script
-# Additional configurations from: https://github.com/LeDragoX/Win-Debloat-Tools/blob/main/src/configs/shutup10/ooshutup10.cfg
+# Adapted from Chris Titus's script: https://github.com/ChrisTitusTech/win10script
+# Also using a recommended config from LeDragoX: https://github.com/LeDragoX/Win-Debloat-Tools/blob/main/src/configs/shutup10/ooshutup10.cfg
+# The overall idea: streamline Windows, remove unwanted extras, and apply some performance tweaks.
 
 Import-Module BitsTransfer
 
-# Function to download files from the internet
+# Function that handles file downloads. This is handy when we need external tools or configs
+# without having to open a browser or do manual steps.
 function Download-FileFromWeb {
     [CmdletBinding()]
     [OutputType([String[]])]
@@ -21,7 +23,7 @@ function Download-FileFromWeb {
         [String] $SaveAs
     )
 
-    # Ensure the output directory exists
+    # Make sure the download directory exists. If not, we just go ahead and create it.
     If (!(Test-Path $SaveFolder)) {
         Write-Host "Creating directory: $SaveFolder"
         New-Item -Path $SaveFolder -ItemType Directory -Force | Out-Null
@@ -32,10 +34,12 @@ function Download-FileFromWeb {
     Write-Host "Downloading from: '$DownloadURL'"
     Invoke-WebRequest -Uri $DownloadURL -OutFile $FullFilePath
 
+    # Return the path of the downloaded file so we can easily use it later on.
     return "$FullFilePath"
 }
 
-# Function to improve SSD longevity
+# Function to tweak SSD settings. The idea is to reduce unnecessary disk writes
+# and avoid doing stuff that might wear out the SSD over time.
 function Improve-SSDSettings {
     Write-Host "Applying SSD optimization settings..."
     fsutil behavior set DisableLastAccess 1
@@ -43,7 +47,8 @@ function Improve-SSDSettings {
 }
 Improve-SSDSettings
 
-# Function to create a system restore point
+# Before making system changes, we create a restore point.
+# This gives us a quick fallback if something unexpected happens.
 function Create-SystemRestorePoint {
     [CmdletBinding()]
     param (
@@ -55,7 +60,8 @@ function Create-SystemRestorePoint {
     Checkpoint-Computer -Description $RestorePointName -RestorePointType "MODIFY_SETTINGS"
 }
 
-# Function to run system debloating tools
+# Main "debloat" function. If we're not undoing changes, we'll run cleanup tools.
+# If we are undoing, we revert what we can.
 function Run-SystemDebloat {
     [CmdletBinding()]
     param (
@@ -63,39 +69,44 @@ function Run-SystemDebloat {
     )
 
     If (!$UndoChanges) {
-        # Download and run Malwarebytes AdwCleaner
+        # Pull down Malwarebytes AdwCleaner and run it to remove adware and junk.
+        # This is a quick way to tidy up the system before we apply other improvements.
         $AdwCleanerURL = "https://downloads.malwarebytes.com/file/adwcleaner"
         [String] $AdwCleanerPath = (Download-FileFromWeb -DownloadURL $AdwCleanerURL -SaveAs "adwcleaner.exe")
         Write-Host "Launching Malwarebytes AdwCleaner..."
         Start-Process -FilePath "$AdwCleanerPath" -ArgumentList "/eula", "/clean", "/noreboot" -Wait
     }
 
-    # Download and run O&O ShutUp10++
+    # Next, O&O ShutUp10++ is used to apply recommended privacy settings.
+    # We download it on the fly and run it with a config file to automate the process.
     $ShutUp10URL = "https://dl5.oo-software.com/files/ooshutup10/OOSU10.exe"
     [String] $ShutUp10Path = Download-FileFromWeb -DownloadURL $ShutUp10URL -SaveAs "OOSU10.exe"
     $ShutUp10Config = Download-FileFromWeb -DownloadURL "https://raw.githubusercontent.com/LeDragoX/Win-Debloat-Tools/main/src/configs/shutup10/ooshutup10.cfg" -SaveAs "ooshutup10.cfg"
 
-    # Push-Location should be called with a proper directory path
+    # We need to run OOSU10 in its own directory.
     $ShutUp10Folder = Split-Path -Path $ShutUp10Path
     Push-Location -Path $ShutUp10Folder
 
     If ($UndoChanges) {
+        # If we're rolling back changes, we apply the default config from OOSU10.
         Write-Host "Reverting settings using O&O ShutUp10++..."
         Start-Process -FilePath "$ShutUp10Path" -ArgumentList "ooshutup10-default.cfg", "/quiet" -Wait
     } Else {
+        # Otherwise, we apply our recommended set of tweaks for privacy and performance.
         Write-Host "Applying recommended settings with O&O ShutUp10++..."
         Start-Process -FilePath "$ShutUp10Path" -ArgumentList "ooshutup10.cfg", "/quiet" -Wait
     }
 
     Pop-Location
+    # After we’re done, we remove OOSU10 and related files. Keeps things clean.
     Remove-Item -Path $ShutUp10Folder -Force -Recurse
 }
 
-# Create a system restore point before making changes
+# We create a restore point before starting any major changes.
 Create-SystemRestorePoint -RestorePointName "Pre-Debloat Optimization"
 
 If (!$UndoChanges) {
-    Run-SystemDebloat # Execute debloating tools and scans
+    Run-SystemDebloat # Actually do the cleaning and privacy setups.
 } Else {
     Run-SystemDebloat -UndoChanges
 }
@@ -104,7 +115,7 @@ $MouseSettingsPath = "HKCU:\Control Panel\Mouse"
 $NewsAndInterestsUserPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds"
 $NewsAndInterestsPolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Feeds"
 
-# Functions to manage mouse settings
+# Functions that tweak mouse acceleration. Some prefer it off for better precision, especially in gaming.
 function TurnOff-MouseAcceleration {
     Write-Host "Turning off mouse acceleration..."
     Set-ItemProperty -Path $MouseSettingsPath -Name "MouseSpeed" -Type String -Value "0"
@@ -119,7 +130,8 @@ function TurnOn-MouseAcceleration {
     Set-ItemProperty -Path $MouseSettingsPath -Name "MouseThreshold2" -Type String -Value "10"
 }
 
-# Functions to manage News and Interests feature
+# The "News and Interests" widget can be distracting.
+# We'll hide it to keep the taskbar clean and less cluttered.
 function Hide-NewsAndInterests {
     Write-Host "Disabling 'News and Interests' on the taskbar..."
     Set-ItemProperty -Path $NewsAndInterestsUserPath -Name "ShellFeedsTaskbarOpenOnHover" -Type DWord -Value 0
@@ -132,7 +144,8 @@ function Show-NewsAndInterests {
     Remove-ItemProperty -Path $NewsAndInterestsPolicyPath -Name "EnableFeeds" -ErrorAction SilentlyContinue
 }
 
-# Function to manage Windows optional features
+# Managing Windows optional features. We can enable or disable certain built-in components
+# that we might never use (e.g., Fax Services).
 function Configure-OptionalFeatures {
     [CmdletBinding()]
     param (
@@ -147,6 +160,7 @@ function Configure-OptionalFeatures {
     foreach ($Feature in $FeaturesList) {
         $FeatureInfo = Get-WindowsOptionalFeature -Online -FeatureName $Feature -ErrorAction SilentlyContinue
         if ($FeatureInfo) {
+            # Toggle the feature state based on what we want and what it currently is.
             if ($Action -eq 'Disable' -and $FeatureInfo.State -eq 'Enabled') {
                 Write-Host "Disabling feature: $Feature"
                 Disable-WindowsOptionalFeature -Online -FeatureName $Feature -NoRestart -Remove
@@ -155,12 +169,14 @@ function Configure-OptionalFeatures {
                 Enable-WindowsOptionalFeature -Online -FeatureName $Feature -NoRestart
             }
         } else {
+            # If a feature doesn’t exist, just let the user know. No harm done.
             Write-Host "Feature not found: $Feature"
         }
     }
 }
 
-# Function to optimize Windows features
+# We gather a bunch of optional features and disable them, or re-enable them if we’re undoing.
+# The goal: reduce resource usage and remove unnecessary components.
 function Optimize-WindowsComponents {
     [CmdletBinding()]
     param (
@@ -168,13 +184,13 @@ function Optimize-WindowsComponents {
     )
 
     $FeaturesToManage = @(
-        "FaxServicesClientPackage",             # Windows Fax and Scan
-        "IIS-ASPNET",                           # Internet Information Services components
-        "Internet-Explorer-Optional-amd64",     # Internet Explorer
-        "MediaPlayback",                        # Windows Media Player
-        "MicrosoftWindowsPowerShellV2",         # PowerShell 2.0
-        "MicrosoftWindowsPowerShellV2Root",     # PowerShell 2.0 Root
-        "WorkFolders-Client"                    # Work Folders Client
+        "FaxServicesClientPackage",             # Windows Fax and Scan: rarely used nowadays
+        "IIS-ASPNET",                           # IIS components we likely don't need on a desktop
+        "Internet-Explorer-Optional-amd64",     # IE is outdated, better to have it off
+        "MediaPlayback",                        # Can remove if you have no use for WMP
+        "MicrosoftWindowsPowerShellV2",         # Legacy PowerShell 2.0 components
+        "MicrosoftWindowsPowerShellV2Root",     # Root component for PowerShell 2.0
+        "WorkFolders-Client"                    # Not commonly used in personal setups
     )
 
     If ($UndoChanges) {
@@ -190,28 +206,31 @@ If (!$UndoChanges) {
     Optimize-WindowsComponents -UndoChanges
 }
 
-# Performance tweaks
+# Now we do some performance tweaks.
+# The idea here is to set various registry values and services to improve system responsiveness.
 Write-Host "Applying performance enhancements..."
 
-# Enable NDU and set SvcHostSplitThresholdInKB
+# Enabling NDU can improve network performance. We also adjust SvcHostSplitThresholdInKB based on RAM.
 Set-ItemProperty -Path "HKLM:\SYSTEM\ControlSet001\Services\Ndu" -Name "Start" -Type DWord -Value 2
 $TotalRAMInKB = (Get-CimInstance -ClassName Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1KB
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control" -Name "SvcHostSplitThresholdInKB" -Type QWord -Value $TotalRAMInKB
 
-# Disable Edge background processes
+# Disable Edge preloading and background activities to free up some resources.
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\MicrosoftEdge\Main" -Name "AllowPrelaunch" -Type DWord -Value 0
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\MicrosoftEdge\TabPreloader" -Name "AllowTabPreloading" -Type DWord -Value 0
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate" -Name "UpdateDefault" -Type DWord -Value 0
 
-# Adjust network throttling settings
+# Adjust network throttling to avoid artificially limiting our bandwidth.
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" -Name "NonBestEffortLimit" -Type DWord -Value 0
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Type DWord -Value 0xffffffff
 
-# Modify desktop settings for performance
+# Tell Windows to end tasks automatically rather than waiting. Speeds up shutdowns and logoffs.
 Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "AutoEndTasks" -Type String -Value "1"
+
+# Adjust system responsiveness to ensure smoother performance, especially under load.
 Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Type DWord -Value 0
 
-# Configure gaming-related system profile settings
+# Tweak system profile settings for gaming. Increase GPU priority and scheduling to favor performance.
 $GamingProfilePath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games"
 If (!(Test-Path $GamingProfilePath)) {
     New-Item -Path $GamingProfilePath -Force | Out-Null
@@ -220,10 +239,10 @@ Set-ItemProperty -Path $GamingProfilePath -Name "GPU Priority" -Type DWord -Valu
 Set-ItemProperty -Path $GamingProfilePath -Name "Priority" -Type DWord -Value 6
 Set-ItemProperty -Path $GamingProfilePath -Name "Scheduling Category" -Type String -Value "High"
 
-# Disable clearing page file at shutdown
+# Don’t clear the page file at shutdown—speeds up the shutdown process.
 Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "ClearPageFileAtShutdown" -Type DWord -Value 0
 
-# Remove unnecessary registry entries
+# Remove registry entries associated with extensions we don’t need. Just a bit of decluttering.
 $RegistryKeysToRemove = @(
     "HKCR:\Extensions\ContractId\Windows.BackgroundTasks\PackageId\*",
     "HKCR:\Extensions\ContractId\Windows.Launch\PackageId\*",
@@ -238,7 +257,8 @@ foreach ($RegistryPattern in $RegistryKeysToRemove) {
     }
 }
 
-# Function to optimize services
+# Function to manage and optimize system services.
+# Disabling certain services can reduce overhead and free up resources.
 function Optimize-SystemServices {
     param (
         [Switch]$UndoChanges
@@ -246,7 +266,8 @@ function Optimize-SystemServices {
 
     Write-Host "Adjusting Windows services for optimal performance..."
 
-    # Services to disable
+    # Services we consider non-essential for normal desktop usage are disabled.
+    # If undoing changes, we set them back to manual.
     $ServicesToDisable = @(
         "DiagTrack",
         "dmwappushservice",
@@ -258,7 +279,7 @@ function Optimize-SystemServices {
         "WSearch"
     )
 
-    # Services to set to manual
+    # These services go to manual since we might need them occasionally but don't want them always running.
     $ServicesToManual = @(
         "BITS",
         "edgeupdate",
@@ -270,16 +291,18 @@ function Optimize-SystemServices {
         "XboxNetApiSvc"
     )
 
-    # Services to set to automatic
+    # This service stays on automatic because we actually need it.
     $ServicesToAutomatic = @(
         "Ndu"
     )
 
     if ($UndoChanges) {
+        # Going back to a safer default: manual start rather than disabled.
         foreach ($Service in $ServicesToDisable) {
             Set-Service -Name $Service -StartupType Manual -ErrorAction SilentlyContinue
         }
     } else {
+        # Just turn these off so they're not running constantly in the background.
         foreach ($Service in $ServicesToDisable) {
             Set-Service -Name $Service -StartupType Disabled -ErrorAction SilentlyContinue
         }
@@ -300,7 +323,8 @@ If (!$UndoChanges) {
     Optimize-SystemServices -UndoChanges
 }
 
-# Function to optimize scheduled tasks
+# Function to tweak scheduled tasks.
+# We disable tasks that aren't critical and just eat resources or send data we don't need.
 function Optimize-ScheduledTasks {
     param (
         [Switch]$UndoChanges
@@ -308,7 +332,8 @@ function Optimize-ScheduledTasks {
 
     Write-Host "Modifying scheduled tasks for better performance..."
 
-    # Tasks to disable
+    # These tasks either track usage, gather telemetry, or do things we don’t want running regularly.
+    # If we're reverting, we turn them back on.
     $TasksToDisable = @(
         "\Microsoft\Office\OfficeTelemetryAgentLogOn",
         "\Microsoft\Office\OfficeTelemetryAgentFallBack",
@@ -326,7 +351,7 @@ function Optimize-ScheduledTasks {
         "\Microsoft\Windows\Shell\FamilySafetyUpload"
     )
 
-    # Tasks to enable
+    # Tasks we consider beneficial or harmless to keep active.
     $TasksToEnable = @(
         "\Microsoft\Windows\Defrag\ScheduledDefrag",
         "\Microsoft\Windows\Maintenance\WinSAT",
@@ -335,6 +360,7 @@ function Optimize-ScheduledTasks {
     )
 
     if ($UndoChanges) {
+        # Re-enabling tasks that were previously disabled.
         foreach ($Task in $TasksToDisable) {
             $TaskPath = Split-Path $Task -Parent
             $TaskName = Split-Path $Task -Leaf
@@ -343,6 +369,7 @@ function Optimize-ScheduledTasks {
             } catch {}
         }
     } else {
+        # Disabling tasks we don't want constantly running behind the scenes.
         foreach ($Task in $TasksToDisable) {
             $TaskPath = Split-Path $Task -Parent
             $TaskName = Split-Path $Task -Leaf
@@ -352,6 +379,7 @@ function Optimize-ScheduledTasks {
         }
     }
 
+    # Ensuring that the tasks we actually want are enabled.
     foreach ($Task in $TasksToEnable) {
         $TaskPath = Split-Path $Task -Parent
         $TaskName = Split-Path $Task -Leaf
@@ -367,9 +395,9 @@ If (!$UndoChanges) {
     Optimize-ScheduledTasks -UndoChanges
 }
 
-# Apply mouse and taskbar settings
+# Turn off mouse acceleration for better pointer precision, especially useful for gaming and design work.
 TurnOff-MouseAcceleration
-Hide-NewsAndInterests
 
-# Final message
+# Hide that "News and Interests" thing on the taskbar. Just reduces clutter and distraction.
+Hide-NewsAndInterests
 Write-Host "System optimization script has completed successfully!"
