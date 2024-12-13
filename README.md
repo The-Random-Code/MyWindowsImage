@@ -1,0 +1,1 @@
+I made this script with the goal of tweaking Chris Titus's Win10 Debloat Script and improving upon LeDragoX/Win-Debloat-Tools repository. I basically combined components of these two scripts and customized it to my taste.
